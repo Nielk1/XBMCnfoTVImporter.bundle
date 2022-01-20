@@ -587,6 +587,14 @@ class xbmcnfotv(Agent.TV_Shows):
 						self.DLog("No Series Episode Duration in tvschow.nfo file.")
 						pass
 
+				# Season titles
+				for season in metadata.seasons:
+					Log("Looking for season title for season %s", metadata.seasons[season].index)
+					try:
+						metadata.seasons[season].title = nfoXML.xpath('namedseason[@number="' + str(metadata.seasons[season].index) + '"]')[0].text
+					except:
+						metadata.seasons[season].title = None
+
 				# Show assets
 				if not Prefs['localmediaagent']:
 					if Prefs['assetslocation'] == 'local':
@@ -705,6 +713,9 @@ class xbmcnfotv(Agent.TV_Shows):
 				except: Log("\t-")
 				try: Log("Duration: " + str(metadata.duration // 60000) + ' min')
 				except: Log("Duration: -")
+				for season in metadata.seasons:
+					try: Log("Season " + str(metadata.seasons[season].index) + " Title: " + metadata.seasons[season].title)
+					except: Log("Season " + str(metadata.seasons[season].index) + " Title: -")
 				Log("Actors:")
 				try: [Log("\t" + actor.name + " > " + actor.role) for actor in metadata.roles]
 				except: [Log("\t" + actor.name) for actor in metadata.roles]
@@ -738,6 +749,10 @@ class xbmcnfotv(Agent.TV_Shows):
 					seasonPath = os.path.dirname(firstEpisodePath)
 
 					metadata.seasons[season_num].index = int(season_num)
+					try:
+						metadata.seasons[season_num].title = nfoXML.xpath('namedseason[@number="' + str(metadata.seasons[season_num].index) + '"]')[0].text
+					except:
+						metadata.seasons[season_num].title = None
 
 					if not Prefs['localmediaagent']:
 						if Prefs['assetslocation'] == 'local':
