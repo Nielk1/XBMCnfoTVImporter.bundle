@@ -11,11 +11,19 @@
 # Krypton ratings fix by F4RHaD
 # Season banner and season art support by Christian
 #
-import os, re, time, datetime, platform, traceback, glob, re, htmlentitydefs
-from dateutil.parser import parse
-import urllib
-import urlparse
+import datetime
+import glob
 import hashlib
+import os
+import platform
+import re
+import time
+import traceback
+import urllib
+
+import htmlentitydefs
+import urlparse
+from dateutil.parser import parse
 
 PERCENT_RATINGS = {
   'rottentomatoes','rotten tomatoes','rt','flixster'
@@ -27,8 +35,7 @@ class xbmcnfotv(Agent.TV_Shows):
 	primary_provider = True
 	persist_stored_files = False
 	languages = [Locale.Language.NoLanguage]
-	accepts_from = ['com.plexapp.agents.localmedia','com.plexapp.agents.opensubtitles','com.plexapp.agents.podnapisi','com.plexapp.agents.plexthememusic','com.plexapp.agents.subzero',
-	'com.plexapp.agents.localtvextras']
+	accepts_from = ['com.plexapp.agents.localmedia','com.plexapp.agents.opensubtitles','com.plexapp.agents.podnapisi','com.plexapp.agents.plexthememusic','com.plexapp.agents.subzero','com.plexapp.agents.localtvextras']
 	contributes_to = ['com.plexapp.agents.thetvdb']
 
 ##### helper functions #####
@@ -104,13 +111,20 @@ class xbmcnfotv(Agent.TV_Shows):
 	# @param parts Parts of multi-episode.
 	# @return void
 
-	def AssetsLocal(self, metadata, paths, type, parts=[], multEpisode=False):
+	def AssetsLocal(self, metadata, mainPath, type, parts=[], multEpisode=False, seasonPath=None, postersFromNfo=[]):
 		pathFiles = {}
 		audioExts = ['mp3', 'm4a']
 		imageExts = ['jpg', 'png', 'jpeg', 'tbn']
 		rootFile = os.path.splitext(os.path.basename(parts[0].file.encode("utf-8")))[0] if parts else None
 
-		for path in paths:
+		rootPaths = [mainPath]
+		if seasonPath:
+			if Prefs['seasonassetsinseasonfolder']:
+				rootPaths = [seasonPath]
+			else:
+				rootPaths.append(seasonPath)
+
+		for path in rootPaths:
 			path = path.encode("utf-8")
 			for filePath in sorted(os.listdir(path)):
 				if filePath.endswith(tuple(imageExts + audioExts)):
@@ -127,13 +141,18 @@ class xbmcnfotv(Agent.TV_Shows):
 			searchTuples.append(['(fanart|art|background|backdrop)-?[0-9]?[0-9]?', metadata.art, imageExts])
 			searchTuples.append(['theme-?[0-9]?[0-9]?', metadata.themes, audioExts])
 		elif type == 'season':
-			searchTuples.append(['season-?0?%s(-poster)?-?[0-9]?[0-9]?' % metadata.index, metadata.posters, imageExts])
-			searchTuples.append(['season-?0?%s-banner-?[0-9]?[0-9]?' % metadata.index, metadata.banners, imageExts])
-			searchTuples.append(['season-?0?%s-(fanart|art|background|backdrop)-?[0-9]?[0-9]?' % metadata.index, metadata.art, imageExts])
-			if int(metadata.index) == 0:
-				searchTuples.append(['season-specials-poster-?[0-9]?[0-9]?', metadata.posters, imageExts])
-				searchTuples.append(['season-specials-banner-?[0-9]?[0-9]?', metadata.banners, imageExts])
-				searchTuples.append(['season-specials-(fanart|art|background|backdrop)-?[0-9]?[0-9]?', metadata.art, imageExts])
+			if Prefs['seasonassetsinseasonfolder']:
+				searchTuples.append(['(season|poster|folder)-?[0-9]?[0-9]?', metadata.posters, imageExts])
+				searchTuples.append(['banner-?[0-9]?[0-9]?', metadata.banners, imageExts])
+				searchTuples.append(['(fanart|art|background|backdrop)-?[0-9]?[0-9]?', metadata.art, imageExts])
+			else:
+				searchTuples.append(['season-?0?%s(-poster)?-?[0-9]?[0-9]?' % metadata.index, metadata.posters, imageExts])
+				searchTuples.append(['season-?0?%s-banner-?[0-9]?[0-9]?' % metadata.index, metadata.banners, imageExts])
+				searchTuples.append(['season-?0?%s-(fanart|art|background|backdrop)-?[0-9]?[0-9]?' % metadata.index, metadata.art, imageExts])
+				if int(metadata.index) == 0:
+					searchTuples.append(['season-specials-poster-?[0-9]?[0-9]?', metadata.posters, imageExts])
+					searchTuples.append(['season-specials-banner-?[0-9]?[0-9]?', metadata.banners, imageExts])
+					searchTuples.append(['season-specials-(fanart|art|background|backdrop)-?[0-9]?[0-9]?', metadata.art, imageExts])
 		elif type == 'episode':
 			searchTuples.append([re.escape(rootFile) + '(-|-thumb)?-?[0-9]?[0-9]?', metadata.thumbs, imageExts])
 
@@ -141,6 +160,23 @@ class xbmcnfotv(Agent.TV_Shows):
 			validKeys = []
 			sortIndex = 1
 			filePathKeys = sorted(pathFiles.keys(), key = lambda x: os.path.splitext(x)[0])
+			
+			if mediaList is metadata.thumbs:
+				# posters from nfo
+				for poster in sorted(postersFromNfo, key = lambda x: os.path.splitext(os.path.basename(x))[0]):
+					if multEpisode and ("-E" in filePath): continue
+					
+					data = Core.storage.load(poster)
+					mediaHash = os.path.basename(filePath) + hashlib.md5(data).hexdigest()
+					
+					validKeys.append(mediaHash)
+					if mediaHash not in mediaList:
+						mediaList[mediaHash] = Proxy.Media(data, sort_order = sortIndex)
+						Log('Found season poster image at ' + filePath)
+					else:
+						Log('Skipping file %s file because it already exists.', filePath)
+					sortIndex += 1
+			
 			for filePath in filePathKeys:
 				for ext in exts:
 					if re.match('%s.%s' % (structure, ext), filePath, re.IGNORECASE):
@@ -408,9 +444,9 @@ class xbmcnfotv(Agent.TV_Shows):
 				# Content Rating
 				try:
 					mpaa = nfoXML.xpath('./mpaa')[0].text
-					match = re.match(r'(?:Rated\s)?(?P<mpaa>[A-z0-9-+/.]+(?:\s[0-9]+[A-z]?)?)?', mpaa)
+					match = re.match(r'(?:Rated\s)?(?P<mpaa>[A-z0-9-+/.:]+(?:\s[0-9]+[A-z]?)?)?', mpaa)
 					if match.group('mpaa'):
-						content_rating = match.group('mpaa')
+						content_rating = match.group('mpaa').replace(':','/').replace('DK','dk') #Plex wants : as / and DK as dk
 					else:
 						content_rating = 'NR'
 					metadata.content_rating = content_rating
@@ -562,14 +598,15 @@ class xbmcnfotv(Agent.TV_Shows):
 				except:
 					self.DLog('No set tag found...')
 					pass
-				if setname:
+				if setname and Prefs['collectionsfromsets']:
 					metadata.collections.add (setname)
 					self.DLog('Added Collection from Set tag.')
 				# Collections (Tags)
 				try:
-					tags = nfoXML.xpath('tag')
-					[metadata.collections.add(t.strip()) for tag_xml in tags for t in tag_xml.text.split('/')]
-					self.DLog('Added Collection(s) from tags.')
+					if Prefs['collectionsfromtags']:
+						tags = nfoXML.xpath('tag')
+						[metadata.collections.add(t.strip()) for tag_xml in tags for t in tag_xml.text.split('/')]
+						self.DLog('Added Collection(s) from tags.')
 				except:
 					self.DLog('Error adding Collection(s) from tags.')
 					pass
@@ -588,19 +625,11 @@ class xbmcnfotv(Agent.TV_Shows):
 						self.DLog("No Series Episode Duration in tvschow.nfo file.")
 						pass
 
-				# Season titles
-				for season in metadata.seasons:
-					Log("Looking for season title for season %s", metadata.seasons[season].index)
-					try:
-						metadata.seasons[season].title = nfoXML.xpath('namedseason[@number="' + str(metadata.seasons[season].index) + '"]')[0].text
-					except:
-						metadata.seasons[season].title = None
-
 				# Show assets
 				if not Prefs['localmediaagent']:
 					if Prefs['assetslocation'] == 'local':
 						Log("Looking for show assets for %s from local", metadata.title)
-						try: self.AssetsLocal(metadata, [path], 'show')
+						try: self.AssetsLocal(metadata, path, 'show')
 						except Exception, e:
 							Log('Error finding show assets for %s from local: %s', metadata.title, str(e))
 					else:
@@ -627,6 +656,7 @@ class xbmcnfotv(Agent.TV_Shows):
 							newrole.role = role
 						rroles.append (newrole.role)
 					except:
+						#newrole.role = 'Unknown Role ' + str(n) #this is not needed, and doesn't provide usefull information in Plex
 						pass
 					newrole.photo = ''
 					athumbloc = Prefs['athumblocation']
@@ -714,9 +744,6 @@ class xbmcnfotv(Agent.TV_Shows):
 				except: Log("\t-")
 				try: Log("Duration: " + str(metadata.duration // 60000) + ' min')
 				except: Log("Duration: -")
-				for season in metadata.seasons:
-					try: Log("Season " + str(metadata.seasons[season].index) + " Title: " + metadata.seasons[season].title)
-					except: Log("Season " + str(metadata.seasons[season].index) + " Title: -")
 				Log("Actors:")
 				try: [Log("\t" + actor.name + " > " + actor.role) for actor in metadata.roles]
 				except: [Log("\t" + actor.name) for actor in metadata.roles]
@@ -750,15 +777,11 @@ class xbmcnfotv(Agent.TV_Shows):
 					seasonPath = os.path.dirname(firstEpisodePath)
 
 					metadata.seasons[season_num].index = int(season_num)
-					try:
-						metadata.seasons[season_num].title = nfoXML.xpath('namedseason[@number="' + str(metadata.seasons[season_num].index) + '"]')[0].text
-					except:
-						metadata.seasons[season_num].title = None
 
 					if not Prefs['localmediaagent']:
 						if Prefs['assetslocation'] == 'local':
 							Log('Looking for season assets for %s season %s.', metadata.title, season_num)
-							try: self.AssetsLocal(metadata.seasons[season_num], [path, seasonPath], 'season')
+							try: self.AssetsLocal(metadata.seasons[season_num], path, 'season', seasonPath=seasonPath)
 							except Exception, e: Log("Error finding season assets for %s season %s: %s", metadata.title, season_num, str(e))
 						else:
 							Log('Looking for season assets for %s season %s from url', metadata.title, season_num)
@@ -791,11 +814,12 @@ class xbmcnfotv(Agent.TV_Shows):
 								self.DLog('UPDATE: ' + path1)
 								filepath = path1.split
 								path = os.path.dirname(path1)
-								fileExtension = path1.split(".")[-1].lower()
-								
+								fileExtension = path1.split(".")[-1]
+
 								nfoFile = path1.replace('.'+fileExtension, '.nfo')
 								# Handling stacked files: part#, cd#, dvd#, pt#, disk#, disc#
 								nfoFile = re.sub(r'[.-]?(part|cd|dvd|pt|disk|disc)\d', '', nfoFile, flags = re.IGNORECASE )
+								
 								self.DLog("Looking for episode NFO file " + nfoFile)
 								if os.path.exists(nfoFile):
 									self.DLog("File exists...")
@@ -882,9 +906,9 @@ class xbmcnfotv(Agent.TV_Shows):
 										# Ep. Content Rating
 										try:
 											mpaa = nfoXML.xpath('./mpaa')[0].text
-											match = re.match(r'(?:Rated\s)?(?P<mpaa>[A-z0-9-+/.]+(?:\s[0-9]+[A-z]?)?)?', mpaa)
+											match = re.match(r'(?:Rated\s)?(?P<mpaa>[A-z0-9-+/.:]+(?:\s[0-9]+[A-z]?)?)?', mpaa)
 											if match.group('mpaa'):
-												content_rating = match.group('mpaa')
+												content_rating = match.group('mpaa').replace(':','/').replace('DK','dk') #Plex wants : as / and DK as dk
 											else:
 												content_rating = 'NR'
 											episode.content_rating = content_rating
@@ -1057,9 +1081,21 @@ class xbmcnfotv(Agent.TV_Shows):
 
 											episodeMedia = media.seasons[season_num].episodes[ep_num].items[0]
 											path = os.path.dirname(episodeMedia.parts[0].file)
+											
 											if Prefs['assetslocation'] == 'local':
+
+												# art.poster field
+												postersFromNfo = []
+												try:
+													for n, poster in enumerate(nfoXML.xpath('art')[0].xpath('poster')):
+														p = poster.text.encode('utf-8')
+														if p and os.path.isfile(p):
+															postersFromNfo.append(p)
+												except:
+													pass
+
 												Log('Looking for episode assets %s for %s season %s.', ep_num, metadata.title, season_num)
-												try: self.AssetsLocal(episode, [path], 'episode', episodeMedia.parts, multEpisode)
+												try: self.AssetsLocal(episode, path, 'episode', episodeMedia.parts, multEpisode, postersFromNfo=postersFromNfo)
 												except Exception, e: Log('Error finding episode assets %s for %s season %s: %s', ep_num, metadata.title, season_num,str(e))
 											else:
 												Log('Looking for episode assets for %s season %s from url', metadata.title, season_num)
