@@ -27,7 +27,8 @@ class xbmcnfotv(Agent.TV_Shows):
 	primary_provider = True
 	persist_stored_files = False
 	languages = [Locale.Language.NoLanguage]
-	accepts_from = ['com.plexapp.agents.localmedia','com.plexapp.agents.opensubtitles','com.plexapp.agents.podnapisi','com.plexapp.agents.plexthememusic','com.plexapp.agents.subzero']
+	accepts_from = ['com.plexapp.agents.localmedia','com.plexapp.agents.opensubtitles','com.plexapp.agents.podnapisi','com.plexapp.agents.plexthememusic','com.plexapp.agents.subzero',
+	'com.plexapp.agents.localtvextras']
 	contributes_to = ['com.plexapp.agents.thetvdb']
 
 ##### helper functions #####
